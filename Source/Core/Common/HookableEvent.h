@@ -88,6 +88,9 @@ public:
 private:
   struct Listener
   {
+    // Ajout d'un constructeur explicite pour aider le compilateur
+    explicit Listener(CallbackType cb) : callback(std::move(cb)) {}
+
     const CallbackType callback;
     bool is_pending_removal{};
   };

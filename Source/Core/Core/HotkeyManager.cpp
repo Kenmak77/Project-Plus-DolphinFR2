@@ -458,7 +458,10 @@ void HotkeyManager::LoadDefaults(const ControllerInterface& ciface)
   set_key_expression(HK_COLLAPSE_CHAT, "LEFT");
   set_key_expression(HK_EXPAND_CHAT, "RIGHT");
   set_key_expression(HK_STOP, "ESCAPE");
-  set_key_expression(HK_FULLSCREEN, hotkey_string({"Alt", "RETURN"}));
+  set_key_expression(
+    HK_FULLSCREEN,
+    std::string("((LMENU | RMENU) & !(LSHIFT | RSHIFT) & !(LCONTROL | RCONTROL)) & RETURN | `F11`")
+);
 #else
   set_key_expression(HK_VOLUME_DOWN, "Down");
   set_key_expression(HK_VOLUME_UP, "Up");

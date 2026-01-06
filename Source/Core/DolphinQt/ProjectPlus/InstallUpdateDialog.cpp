@@ -360,7 +360,7 @@ if (!hasEnoughFreeSpace(installationDirectory, minRequiredBytes))
 {
     QMessageBox::critical(this,
         QStringLiteral("Not enough space"),
-        QStringLiteral("You need at least 8 GB of free space to install this update.\n\n"
+        QStringLiteral("You need at least 5 GB of free space to install this update.\n\n"
                        "Please free some disk space and try again."));
     qWarning().noquote() << "❌ Not enough free space. Aborting update.";
     reject();
