@@ -20,9 +20,9 @@
 #elif defined(__APPLE__)
 #define NORMAL_USER_DIR "Library/Application Support/Dolphin"
 #elif defined(ANDROID)
-#define NORMAL_USER_DIR "/sdcard/project-plus-dolphin"
+#define NORMAL_USER_DIR "/sdcard/P+FR"
 #else
-#define NORMAL_USER_DIR "project-plus-dolphin"
+#define NORMAL_USER_DIR "P+FR"
 #endif
 
 // The portable user directory

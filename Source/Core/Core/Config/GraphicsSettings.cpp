@@ -60,7 +60,7 @@ const Info<bool> GFX_DUMP_MIP_TEXTURES{{System::GFX, "Settings", "DumpMipTexture
 const Info<bool> GFX_DUMP_BASE_TEXTURES{{System::GFX, "Settings", "DumpBaseTextures"}, true};
 const Info<int> GFX_TEXTURE_PNG_COMPRESSION_LEVEL{
     {System::GFX, "Settings", "TexturePNGCompressionLevel"}, 6};
-const Info<bool> GFX_HIRES_TEXTURES{{System::GFX, "Settings", "HiresTextures"}, false};
+const Info<bool> GFX_HIRES_TEXTURES{{System::GFX, "Settings", "HiresTextures"}, true};
 const Info<bool> GFX_CACHE_HIRES_TEXTURES{{System::GFX, "Settings", "CacheHiresTextures"}, true};
 const Info<bool> GFX_DUMP_EFB_TARGET{{System::GFX, "Settings", "DumpEFBTarget"}, false};
 const Info<bool> GFX_DUMP_XFB_TARGET{{System::GFX, "Settings", "DumpXFBTarget"}, false};
@@ -82,7 +82,7 @@ const Info<bool> GFX_ENABLE_PIXEL_LIGHTING{{System::GFX, "Settings", "EnablePixe
 const Info<bool> GFX_FAST_DEPTH_CALC{{System::GFX, "Settings", "FastDepthCalc"}, true};
 const Info<u32> GFX_MSAA{{System::GFX, "Settings", "MSAA"}, 1};
 const Info<bool> GFX_SSAA{{System::GFX, "Settings", "SSAA"}, false};
-const Info<int> GFX_EFB_SCALE{{System::GFX, "Settings", "InternalResolution"}, 1};
+const Info<int> GFX_EFB_SCALE{{System::GFX, "Settings", "InternalResolution"}, 0};
 const Info<int> GFX_MAX_EFB_SCALE{{System::GFX, "Settings", "MaxInternalResolution"}, 12};
 const Info<bool> GFX_TEXFMT_OVERLAY_ENABLE{{System::GFX, "Settings", "TexFmtOverlayEnable"}, false};
 const Info<bool> GFX_TEXFMT_OVERLAY_CENTER{{System::GFX, "Settings", "TexFmtOverlayCenter"}, false};
@@ -100,7 +100,7 @@ const Info<int> GFX_COMMAND_BUFFER_EXECUTE_INTERVAL{
 
 const Info<bool> GFX_SHADER_CACHE{{System::GFX, "Settings", "ShaderCache"}, true};
 const Info<bool> GFX_WAIT_FOR_SHADERS_BEFORE_STARTING{
-    {System::GFX, "Settings", "WaitForShadersBeforeStarting"}, false};
+    {System::GFX, "Settings", "WaitForShadersBeforeStarting"}, true};
 const Info<ShaderCompilationMode> GFX_SHADER_COMPILATION_MODE{
     {System::GFX, "Settings", "ShaderCompilationMode"}, ShaderCompilationMode::AsynchronousSkipRendering};
 const Info<int> GFX_SHADER_COMPILER_THREADS{{System::GFX, "Settings", "ShaderCompilerThreads"}, 1};
