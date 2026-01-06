@@ -14860,7 +14860,7 @@ msgstr "Afficher l'heure du système"
 
 #: Source/Core/DolphinQt/Settings/OnScreenDisplayPane.cpp:86
 msgid "Netplay"
-msgstr "Netplay (jeu en réseau)"
+msgstr "Netplay"
 
 #: Source/Core/DolphinQt/Settings/OnScreenDisplayPane.cpp:90
 msgid "Show NetPlay Ping"

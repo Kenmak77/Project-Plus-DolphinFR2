@@ -229,6 +229,43 @@ static std::vector<std::string> StringListToStdVector(QStringList list)
   return result;
 }
 
+static QJsonObject GetMergedUpdateJson()
+{
+    Common::HttpRequest httpRequest;
+
+    // 🔹 Étape 1 : Récupération du JSON GitHub
+    auto githubResponse = httpRequest.Get("https://api.github.com/repos/Project-Plus-Development-Team/Project-Plus-Dolphin/releases/latest");
+    QJsonObject githubJson;
+    if (githubResponse)
+    {
+        QByteArray data(reinterpret_cast<const char*>(githubResponse->data()), githubResponse->size());
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        githubJson = doc.object();
+    }
+
+    // 🔹 Étape 2 : Chargement de ton JSON custom (update2.json)
+    QJsonObject customJson;
+    auto customResponse = httpRequest.Get("https://update.pplusfr.org/update2.json");
+    if (customResponse)
+    {
+        QByteArray data(reinterpret_cast<const char*>(customResponse->data()), customResponse->size());
+        QJsonDocument doc = QJsonDocument::fromJson(data);
+        if (doc.isObject())
+        {
+            customJson = doc.object();
+            qDebug() << "✅ update2.json loaded and parsed successfully!";
+        }
+    }
+    else
+    {
+        qWarning() << "⚠️ Could not load update2.json from update.pplusfr.org";
+    }
+
+    // 🔹 Étape 3 : Fusion (ton JSON a priorité)
+    MergeJson(githubJson, customJson);
+    return githubJson;
+}
+
 MainWindow::MainWindow(Core::System& system, std::unique_ptr<BootParameters> boot_parameters,
                        const std::string& movie_path)
     : QMainWindow(nullptr), m_system(system)
@@ -1364,37 +1401,46 @@ void MainWindow::ShowAboutDialog()
 
 void MainWindow::ShowUpdateDialog()
 {
-    Common::HttpRequest httpRequest;
+    // 🔹 Fusion GitHub + update2.json
+    QJsonObject jsonObject = GetMergedUpdateJson();
 
-    // Make the GET request
-    auto response = httpRequest.Get("https://api.github.com/repos/Project-Plus-Development-Team/Project-Plus-Dolphin/releases/latest");
-
-    if (response)
+    if (jsonObject.isEmpty())
     {
-        // Access the underlying vector and convert it to QByteArray
-        QByteArray responseData(reinterpret_cast<const char*>(response->data()), response->size());
+        QMessageBox::critical(this, tr("Error"), tr("Failed to fetch update information."));
+        return;
+    }
 
-        // Parse the JSON response
-        QJsonDocument jsonDoc = QJsonDocument::fromJson(responseData);
-        QJsonObject jsonObject = jsonDoc.object();
-      
-        QString currentVersion = QString::fromStdString(SCM_DESC_STR);
-        QString latestVersion = jsonObject.value(QStringLiteral("tag_name")).toString();
+    QString currentVersion = QString::fromStdString(SCM_DESC_STR);
+    QString latestVersion = jsonObject.value(QStringLiteral("tag_name")).toString();
 
-        if (currentVersion != latestVersion)
-        {
-          // Create and show the UpdateDialog with the fetched data
-          bool forced = false; // Set this based on your logic
-          UserInterface::Dialog::UpdateDialog updater(this, jsonObject, forced);
-          updater.exec();
-        } else {
-          QMessageBox::information(this, tr("Info"), tr("You are already up to date."));
-        }
+    if (currentVersion != latestVersion)
+    {
+        bool forced = false;
+        UserInterface::Dialog::UpdateDialog updater(this, jsonObject, forced);
+        updater.exec();
     }
     else
     {
-        // Handle error
-        QMessageBox::critical(this, tr("Error"), tr("Failed to fetch update information."));
+        QMessageBox::information(this, tr("Info"), tr("You are already up to date."));
+    }
+}
+
+void MainWindow::CheckForUpdatesAuto()
+{
+    // 🔹 Même fusion automatique au démarrage
+    QJsonObject jsonObject = GetMergedUpdateJson();
+
+    if (jsonObject.isEmpty())
+        return;
+
+    QString currentVersion = QString::fromStdString(SCM_DESC_STR);
+    QString latestVersion = jsonObject.value(QStringLiteral("tag_name")).toString();
+
+    if (currentVersion != latestVersion)
+    {
+        bool forced = false;
+        UserInterface::Dialog::UpdateDialog updater(this, jsonObject, forced);
+        updater.exec();
     }
 }
 
