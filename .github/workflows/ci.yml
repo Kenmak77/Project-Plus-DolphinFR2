@@ -13,7 +13,7 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v2
       with:
-        repository: Kenmak77/Project-PlusFR-Dolphin
+        repository: Kenmak77/Project-Plus-DolphinFR2
         ref: master
         fetch-depth: 0
     - name: Setup Submodules
@@ -44,7 +44,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          repository: Kenmak77/Project-PlusFR-Dolphin
+          repository: Kenmak77/Project-Plus-DolphinFR2
           ref: master
           submodules: recursive
           fetch-depth: 0
@@ -234,7 +234,7 @@ jobs:
     - name: Checkout Upstream Repo
       uses: actions/checkout@v4
       with:
-        repository: Kenmak77/Project-PlusFR-Dolphin
+        repository: Kenmak77/Project-Plus-DolphinFR2
         ref: master
         fetch-depth: 0
 
