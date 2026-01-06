@@ -25,6 +25,8 @@
 #include "../../Common/Logging/Log.h"
 #include <QCoreApplication>
 #include <QDir>
+#include <QMessageBox>
+#include <QJsonDocument>
 
 using namespace UserInterface::Dialog;
 
@@ -76,46 +78,99 @@ UpdateDialog::~UpdateDialog()
 
 void UpdateDialog::accept()
 {
-    QJsonArray jsonArray = jsonObject[QStringLiteral("assets")].toArray();
-    QString filenameToDownload;
     QString urlToDownload;
+    QString filenameToDownload;
 
-    for (const QJsonValue& value : jsonArray)
+    QString version = jsonObject.value(QStringLiteral("version")).toString();
+    QString changelog = jsonObject.value(QStringLiteral("changelog")).toString();
+
+    qDebug() << "JSON keys available:" << jsonObject.keys();
+
+    // --- Étape 1 : lecture des URLs personnalisées ---
+#ifdef _WIN32
+    urlToDownload = jsonObject.value(QStringLiteral("download-page-windows")).toString();
+#elif defined(__APPLE__)
+    urlToDownload = jsonObject.value(QStringLiteral("download-page-mac")).toString();
+#else
+    urlToDownload = jsonObject.value(QStringLiteral("download-linux-appimage")).toString();
+#endif
+
+    // --- Étape 2 : fallback vers les assets GitHub ---
+if (urlToDownload.isEmpty())
+{
+    QJsonArray assets = jsonObject.value(QStringLiteral("assets")).toArray();
+    for (const QJsonValue& assetVal : assets)
     {
-        QJsonObject object = value.toObject();
+        QJsonObject asset = assetVal.toObject();
+        QString name = asset.value(QStringLiteral("name")).toString().toLower();
+        QString assetUrl = asset.value(QStringLiteral("browser_download_url")).toString();
 
-        QString filenameBlob = object.value(QStringLiteral("name")).toString();
-        QString downloadUrl(object.value(QStringLiteral("browser_download_url")).toString());
+#ifdef _WIN32
+        if (name.contains(QStringLiteral("windows")))
+            urlToDownload = assetUrl;
+#elif defined(__APPLE__)
+        if (name.contains(QStringLiteral("macos")) || name.contains(QStringLiteral("osx")))
+            urlToDownload = assetUrl;
+#else
+        if (name.contains(QStringLiteral("linux")) || name.contains(QStringLiteral("appimage")))
+            urlToDownload = assetUrl;
+#endif
+    } // ← ✅ fermeture du for ici
+} // ← ✅ fermeture du if ici
 
-        #ifdef _WIN32
-        if (filenameBlob.contains(QStringLiteral("Windows.Update")) || 
-            filenameBlob.contains(QStringLiteral("Windows")) || 
-            filenameBlob.contains(QStringLiteral("win64")))
-        {
-            filenameToDownload = filenameBlob;
-            urlToDownload = downloadUrl;
-            break;
-        }
-        #endif
-        #ifdef __APPLE__
-        if (filenameBlob.contains(QStringLiteral("macOS.Update")) || 
-            filenameBlob.contains(QStringLiteral("macOS")))
-        {
-            filenameToDownload = filenameBlob;
-            urlToDownload = downloadUrl;
-            break;
-        }
-        
-        #endif
+    // --- Étape 3 : affichage debug ---
+    QString platformName;
+#ifdef _WIN32
+    platformName = QStringLiteral("Windows");
+#elif defined(__APPLE__)
+    platformName = QStringLiteral("macOS");
+#else
+    platformName = QStringLiteral("Linux");
+#endif
+
+    qDebug().noquote() << QStringLiteral("Platform detected: %1 → Selected URL: %2")
+                          .arg(platformName, urlToDownload);
+
+    // --- Étape 4 : validation ---
+    if (urlToDownload.isEmpty())
+    {
+        QMessageBox::warning(
+            this,
+            QStringLiteral("Update Error"),
+            QStringLiteral("No valid download URL found for this platform.\n(Unsupported update file format)")
+        );
+        return;
     }
 
+    // --- Étape 5 : téléchargement ---
+    filenameToDownload = QFileInfo(urlToDownload).fileName();
     this->url = urlToDownload;
     this->filename = filenameToDownload;
+
     QDialog::accept();
 
-    // Use InstallUpdateDialog for both download and extraction
     QString installationDirectory = QCoreApplication::applicationDirPath();
     QString temporaryDirectory = QDir::tempPath();
-    InstallUpdateDialog installDialog(this, installationDirectory, temporaryDirectory, filenameToDownload, urlToDownload);
-    installDialog.exec();
+
+   // --- Étape 6 : récupération du lien SD ---
+QString sdUrl;
+QJsonArray assets = jsonObject.value(QStringLiteral("assets")).toArray();
+if (!assets.isEmpty())
+{
+    QJsonObject firstAsset = assets.first().toObject();
+    sdUrl = firstAsset.value(QStringLiteral("download-sd")).toString();
 }
+
+InstallUpdateDialog installDialog(
+    this,
+    installationDirectory,
+    temporaryDirectory,
+    filenameToDownload,
+    urlToDownload,
+    sdUrl // ✅ URL SD correctement extraite du JSON
+);
+installDialog.exec();
+
+}
+
+

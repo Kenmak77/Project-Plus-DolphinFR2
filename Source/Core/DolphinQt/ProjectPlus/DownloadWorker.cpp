@@ -1,67 +1,70 @@
-/*
-*  Project+ Dolphin Self-Updater
-*  Credit to the Mario Party Netplay team for the base code of this updater
-*  Copyright (C) 2025 Tabitha Hanegan <tabithahanegan.com>
-*/
-
 #include "DownloadWorker.h"
 #include "Common/HttpRequest.h"
 #include <QFile>
 #include <QDebug>
+#include <QProcess>
 
 DownloadWorker::DownloadWorker(const QString& url, const QString& filename)
-    : url(url), filename(filename) {}
+    : url(url), filename(filename)
+{
+}
 
 void DownloadWorker::startDownload()
 {
-    Common::HttpRequest httpRequest;
+    bool success = false;
 
-    // Set the progress callback
-    httpRequest.SetProgressCallback([this](s64 dltotal, s64 dlnow, s64 ultotal, s64 ulnow) {
-        // Debug output to see if callback is being called
-        qDebug() << "Progress callback called:" << dlnow << "/" << dltotal << "bytes";
-        
-        // Emit the progress signal directly instead of calling updateProgress
-        emit progressUpdated(static_cast<qint64>(dlnow), static_cast<qint64>(dltotal));
-        return true; // Continue the download
-    });
+    // 1️⃣ aria2c (multithreaded, rapide)
+    int ariaResult = QProcess::execute(
+        QStringLiteral("aria2c"),
+        { QStringLiteral("-x4"), QStringLiteral("-s4"),
+          QStringLiteral("-o"), filename, url });
 
-    httpRequest.FollowRedirects();
-    
-    Common::HttpRequest::Headers headers;
-    headers["User-Agent"] = "Dolphin-PPL/1.0";
-
-    // Perform the GET request
-    auto response = httpRequest.Get(url.toStdString(), headers);
-    
-    // Check if the final URL is the expected GitHub objects CDN
-    std::string final_url = httpRequest.GetFinalUrl();
-    if (final_url.find("githubusercontent.com") == std::string::npos) {
-        emit errorOccurred(QStringLiteral("Did not reach the expected GitHub objects URL. Final URL: %1").arg(QString::fromStdString(final_url)));
-        return;
-    }
-    
-    // Check the response
-    if (response)
+    if (ariaResult == 0)
     {
-        QFile file(filename);
-        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        qDebug().noquote() << "✅ Download succeeded with aria2c";
+        success = true;
+    }
+
+    // 2️⃣ fallback rclone
+    if (!success)
+    {
+        int rcloneResult = QProcess::execute(
+            QStringLiteral("rclone"),
+            { QStringLiteral("copyurl"), url, filename, QStringLiteral("--no-check-certificate") });
+        if (rcloneResult == 0)
         {
-            emit errorOccurred(QStringLiteral("Failed to open file for writing."));
-            return;
+            qDebug().noquote() << "✅ Download succeeded with rclone";
+            success = true;
         }
-        QByteArray byteArray(reinterpret_cast<const char*>(response->data()), response->size());
-        file.write(byteArray);
-        file.close();
-        emit finished(); // Emit finished signal
     }
-    else
+
+    // 3️⃣ fallback HTTP interne
+    if (!success)
     {
-        emit errorOccurred(QStringLiteral("Failed to download update file.")); // This should also work
+        Common::HttpRequest request;
+        request.FollowRedirects();
+
+        auto response = request.Get(url.toStdString());
+        if (response)
+        {
+            QFile f(filename);
+            if (f.open(QIODevice::WriteOnly))
+            {
+                f.write(reinterpret_cast<const char*>(response->data()), response->size());
+                f.close();
+                qDebug().noquote() << "✅ Download succeeded with HTTP fallback";
+                success = true;
+            }
+        }
     }
+
+    if (success)
+        emit finished();
+    else
+        emit errorOccurred(QStringLiteral("All download methods failed (aria2c, rclone, HTTP)."));
 }
 
-void DownloadWorker::updateProgress(qint64 dlnow, qint64 dltotal) // Change s64 to qint64
+void DownloadWorker::updateProgress(qint64 dlnow, qint64 dltotal)
 {
-    emit progressUpdated(dlnow, dltotal); // Emit progress signal
+    emit progressUpdated(dlnow, dltotal);
 }

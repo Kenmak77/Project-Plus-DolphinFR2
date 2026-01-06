@@ -1,3 +1,6 @@
+env:
+  yaqti: 6.6.3
+
 name: Project+ Dolphin Builder
 
 on: [push, pull_request]
@@ -10,7 +13,7 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v2
       with:
-        repository: Project-Plus-Development-Team/Project-Plus-Dolphin
+        repository: Kenmak77/Project-PlusFR-Dolphin
         ref: master
         fetch-depth: 0
     - name: Setup Submodules
@@ -29,7 +32,7 @@ jobs:
         
   build_macos:
     name: macOS Build
-    runs-on: macos-15-intel
+    runs-on: macos-14
     env:
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -41,7 +44,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
-          repository: Project-Plus-Development-Team/Project-Plus-Dolphin
+          repository: Kenmak77/Project-PlusFR-Dolphin
           ref: master
           submodules: recursive
           fetch-depth: 0
@@ -63,6 +66,12 @@ jobs:
         with:
           path: ~/deps
           key: macOS deps ${{ hashFiles('.github/workflows/scripts/macos/build-dependencies.sh') }}
+
+      - name: Install Qt6 dependencies
+        run: |
+         brew update
+         brew install qt@6
+         brew link qt@6 --force
 
       - name: Build Dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
@@ -106,6 +115,10 @@ jobs:
           path: .ccache
           key: macOS ccache ${{ steps.ccache_cache_timestamp.outputs.timestamp }}
           restore-keys: macOS ccache
+
+      - name: Patch CMakeLists for Qt6 Network
+        run: |
+         sed -i '' 's/find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg)/find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg Network)/' Source/Core/DolphinQt/CMakeLists.txt
 
       - name: Generate CMake Files
         run: |
@@ -200,7 +213,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: Purge .git for space reasons
-      run: rm -rf /home/runner/work/Project-Plus-Dolphin-src/.git && rm -rf /home/runner/actions-runner/cached/_diag/* && rm -rf /home/runner/actions-runner/_work/_temp/ && rm -rf /home/runner/actions-runner/_work/_tool/*
+      run: rm -rf /home/runner/work/Project-Plus-Dolphin-src/.git
     - name: Setup Packages
       run: |
         flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && \
@@ -221,9 +234,26 @@ jobs:
     - name: Checkout Upstream Repo
       uses: actions/checkout@v4
       with:
-        repository: Project-Plus-Development-Team/Project-Plus-Dolphin
+        repository: Kenmak77/Project-PlusFR-Dolphin
         ref: master
         fetch-depth: 0
+
+    - name: Install Qt 6.6.3
+      uses: jurplel/install-qt-action@v3
+      with:
+        version: '6.6.3'
+        host: 'linux'
+        target: 'desktop'
+        arch: 'gcc_64'
+
+    - name: Install Qt6 dependencies
+      run: |
+       sudo apt update
+       sudo apt install -y \
+         build-essential cmake ninja-build pkg-config \
+         qt6-base-dev qt6-base-private-dev qt6-tools-dev qt6-multimedia-dev qt6-svg-dev \
+         libavcodec-dev libavformat-dev libswscale-dev \
+         libpulse-dev libxi-dev libxrandr-dev libxext-dev libudev-dev libsystemd-dev
 
     - name: Checkout Submodules
       if: steps.cache-submodules.outputs.cache-hit != 'true'
@@ -250,13 +280,6 @@ jobs:
           build-ccache-
       env:
         CCACHE_MAXSIZE: 200M
-    - name: Install Qt
-      run: |
-        curl -sLO https://files.pythonhosted.org/packages/47/42/351389ca36c7adfc5f4e92d086cdb2bdbde13f1b89ee882f4a1cab2183ac/yaqti-2021.7.29-py3-none-any.whl
-        python3 -m pip install yaqti-2021.7.29-py3-none-any.whl
-        pyver=$(python3 --version | awk '{print $2}')
-        curl -sL https://raw.githubusercontent.com/qurious-pixel/yaqti/fetch/yaqti/fetchers.py -o $HOME/.local/lib/python${pyver%.*}/site-packages/yaqti/fetchers.py
-        python -m yaqti install --os linux --platform desktop --version ${{ env.yaqti }} --modules linux_gcc_64 --set-envs --install-deps
     - name: Install Packages
       run: |
         sudo apt-get install -y build-essential dialog dpkg libbluetooth-dev liblz4-dev liblzma-dev libssl-dev libopus-dev libpng-dev libsystemd-dev \
@@ -273,13 +296,16 @@ jobs:
         tar -xvf /tmp/patchelf.tar.gz --directory /tmp/ ./bin/patchelf --strip-components=2 
         sudo mv /tmp/patchelf /usr/bin
         patchelf --version
+    - name: Patch CMakeLists for Qt6 Network
+      run: |
+        sed -i 's/find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg)/find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets Svg Network)/' Source/Core/DolphinQt/CMakeLists.txt
     - name: Build Dolphin
       run: |
-        export Qt_DIR="${{github.workspace}}/qt/${{ env.yaqti }}/gcc_64/lib/cmake/Qt6"
+        export Qt_DIR="/usr/lib/x86_64-linux-gnu/cmake/Qt6"
         mkdir -p "$HOME/.ccache"
         mkdir build
         cd build
-        cmake .. -GNinja -DCMAKE_C_COMPILER=/usr/lib/ccache/gcc-13 -DCMAKE_CXX_COMPILER=/usr/lib/ccache/g++-13 -DCMAKE_PREFIX_PATH="${{github.workspace}}/qt/${{ env.yaqti }}/gcc_64/" -Ddatadir:PATH="share/project-plus-dolphin" -DBIN_INSTALL_DIR="install/usr/bin" -DCMAKE_INSTALL_PREFIX="install/usr" -DINC_INSTALL_DIR="install/usr/include" -DLIB_INSTALL_DIR="install/usr/lib" -DPKGCONFIG_INSTALL_DIR="install/usr/lib/pkgconfig" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DENABLE_NOGUI=OFF
+        cmake .. -GNinja -DCMAKE_C_COMPILER=/usr/lib/ccache/gcc-13 -DCMAKE_CXX_COMPILER=/usr/lib/ccache/g++-13 -DCMAKE_PREFIX_PATH="${{github.workspace}}/qt/${{ env.yaqti }}/gcc_64/" -Ddatadir:PATH="share/project-plus-dolphin" -DBIN_INSTALL_DIR="install/usr/bin" -DCMAKE_INSTALL_PREFIX="install/usr" -DINC_INSTALL_DIR="install/usr/include" -DLIB_INSTALL_DIR="install/usr/lib" -DPKGCONFIG_INSTALL_DIR="install/usr/lib/pkgconfig" -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DENABLE_NOGUI=OFF  -DCMAKE_CXX_FLAGS="-Wno-shadow -Wno-shadow-field-in-constructor -Wno-error=format"
         ninja
     - name: Install Dolphin
       run: |
@@ -291,48 +317,48 @@ jobs:
         cp -P build/install/usr/bin/project-plus-dolphin $GITHUB_WORKSPACE/artifacts
     - name: Package Dolphin-AppImage
       env:
-        QT_BASE_DIR: /qt/${{ env.yaqti }}/gcc_64
-        QTDIR: $QT_BASE_DIR
+        QT_BASE_DIR: /opt/Qt/${{ env.yaqti }}/gcc_64
+        QTDIR: /opt/Qt/${{ env.yaqti }}/gcc_64
       run: |
-        export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:${GITHUB_WORKSPACE}/qt/${{ env.yaqti }}/gcc_64/lib/
         export PATH=$QT_BASE_DIR/bin:$PATH
-        echo "PATH $PATH"
-        sudo ln -s ${GITHUB_WORKSPACE}/$(find qt/ -name qmake) /usr/bin
+        export LD_LIBRARY_PATH=$QT_BASE_DIR/lib:$LD_LIBRARY_PATH
+        echo "✅ Qt path: $QT_BASE_DIR"
         qmake -v
+
         cd /tmp 
         curl -sSfLO "https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage"
         curl -sSfLO "https://github.com/AppImage/AppImageUpdate/releases/download/continuous/AppImageUpdate-x86_64.AppImage"
-        chmod a+x linuxdeploy*.AppImage
-        chmod a+x AppImageUpdate-x86_64.AppImage
+        chmod a+x linuxdeploy*.AppImage AppImageUpdate-x86_64.AppImage
         ./linuxdeploy-x86_64.AppImage --appimage-extract
-        curl -sSfL "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage" -o /tmp/squashfs-root/usr/bin/linuxdeploy-plugin-qt.AppImage
+
+        curl -sSfL "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage" \
+          -o /tmp/squashfs-root/usr/bin/linuxdeploy-plugin-qt.AppImage
         chmod a+x /tmp/squashfs-root/usr/bin/linuxdeploy-plugin-qt.AppImage
+
         mv /tmp/squashfs-root/usr/bin/patchelf /tmp/squashfs-root/usr/bin/patchelf.orig
         sudo cp /usr/bin/patchelf /tmp/squashfs-root/usr/bin/patchelf
+
         cd $GITHUB_WORKSPACE
         mkdir -p squashfs-root
-        cp -a build/install/usr $GITHUB_WORKSPACE/squashfs-root/
-        cp Data/project-plus-dolphin.svg ./squashfs-root/project-plus-dolphin.svg
-        cp Data/project-plus-dolphin.desktop ./squashfs-root/project-plus-dolphin.desktop
-        curl -sSfL https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-x86_64 -o ./squashfs-root/runtime
-        curl -sSfL "https://github.com/RPCS3/AppImageKit-checkrt/releases/download/continuous2/AppRun-patched-x86_64" -o ./squashfs-root/AppRun-patched
-        cp ci/Distribution/appimage/{AppRun,update.sh} ./squashfs-root/
-        mv /tmp/AppImageUpdate-x86_64.AppImage ./squashfs-root/usr/bin/AppImageUpdate
-        echo ${{ env.DOLPHINVER }} > ./squashfs-root/version.txt
-        chmod a+x ./squashfs-root/AppRun
-        chmod a+x ./squashfs-root/runtime
-        chmod a+x ./squashfs-root/AppRun-patched
-        chmod a+x ./squashfs-root/update.sh
+        cp -a build/install/usr squashfs-root/
+        cp Data/project-plus-dolphin.svg squashfs-root/
+        cp Data/project-plus-dolphin.desktop squashfs-root/
+        curl -sSfL https://github.com/AppImage/AppImageKit/releases/download/continuous/runtime-x86_64 -o squashfs-root/runtime
+        curl -sSfL "https://github.com/RPCS3/AppImageKit-checkrt/releases/download/continuous2/AppRun-patched-x86_64" -o squashfs-root/AppRun-patched
+        cp ci/Distribution/appimage/{AppRun,update.sh} squashfs-root/
+        mv /tmp/AppImageUpdate-x86_64.AppImage squashfs-root/usr/bin/AppImageUpdate
+        echo ${{ env.DOLPHINVER }} > squashfs-root/version.txt
+        chmod +x squashfs-root/AppRun squashfs-root/runtime squashfs-root/AppRun-patched squashfs-root/update.sh
+
         export UPD_INFO="gh-releases-zsync|Project-Plus-Development-Team|Project-Plus-Dolphin|continuous|Project+_Dolphin-x86_64.AppImage.zsync"
-        /tmp/squashfs-root/AppRun --appdir="$GITHUB_WORKSPACE"/squashfs-root/ --plugin qt -d "$GITHUB_WORKSPACE"/squashfs-root/project-plus-dolphin.desktop -i "$GITHUB_WORKSPACE"/squashfs-root/project-plus-dolphin.svg \
-        --exclude-library=libglib* --output appimage
-        ls . | grep *.AppImage
-        mv $(ls . | grep *.AppImage) $GITHUB_WORKSPACE/artifacts
-        ls -al $GITHUB_WORKSPACE/artifacts
-        sed -i 's/AppRun.wrapped/AppRun-patched/g' "$GITHUB_WORKSPACE"/squashfs-root/AppRun
-        cat "$GITHUB_WORKSPACE"/squashfs-root/AppRun
-        /tmp/squashfs-root/usr/bin/linuxdeploy-plugin-appimage --appdir="$GITHUB_WORKSPACE"/squashfs-root/
-        ls . | grep *.AppImage
+        /tmp/squashfs-root/AppRun --appdir="$GITHUB_WORKSPACE/squashfs-root/" --plugin qt \
+          -d "$GITHUB_WORKSPACE/squashfs-root/project-plus-dolphin.desktop" \
+          -i "$GITHUB_WORKSPACE/squashfs-root/project-plus-dolphin.svg" \
+          --exclude-library=libglib* --output appimage
+
+        mv $(ls . | grep .AppImage$) $GITHUB_WORKSPACE/artifacts/
+        sed -i 's/AppRun.wrapped/AppRun-patched/g' "$GITHUB_WORKSPACE/squashfs-root/AppRun"
+        /tmp/squashfs-root/usr/bin/linuxdeploy-plugin-appimage --appdir="$GITHUB_WORKSPACE/squashfs-root/"
         mv Project+_Dolphin-x86_64.AppImage $GITHUB_WORKSPACE/uploads/Dolphin_${DOLPHINVER}.AppImage
         ls -al $GITHUB_WORKSPACE/uploads
       continue-on-error: true
