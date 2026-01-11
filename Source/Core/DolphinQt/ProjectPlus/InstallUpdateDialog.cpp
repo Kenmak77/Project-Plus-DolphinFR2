@@ -400,6 +400,13 @@ const QString sdPath = QDir::toNativeSeparators(baseDir + QStringLiteral("/User/
 
         // ⚙️ Thread de calcul du hash
         m_hashThread = QThread::create([this, sdPath]() {
+
+          #ifdef Q_OS_MAC
+    const bool isMac = true;
+#else
+    const bool isMac = false;
+#endif
+
             QFile sdFile(sdPath);
             QString localHash;
             if (sdFile.open(QIODevice::ReadOnly))
@@ -424,18 +431,20 @@ const QString sdPath = QDir::toNativeSeparators(baseDir + QStringLiteral("/User/
                 }
 
                 // --- Fin du fichier ---
-                if (totalSize > sampleSize)
+                // ⚠️ macOS : sd.raw peut être sparse → fin invalide
+                if (!isMac && totalSize > sampleSize)
                 {
-                    sdFile.seek(qMax(0ll, totalSize - sampleSize));
-                    bytesRead = 0;
-                    while (!sdFile.atEnd() && bytesRead < sampleSize)
-                    {
-                        qint64 n = sdFile.read(buffer.data(), chunkSize);
-                        if (n <= 0) break;
-                        hash.addData(buffer.constData(), n);
-                        bytesRead += n;
-                    }
-                }
+                sdFile.seek(qMax(0ll, totalSize - sampleSize));
+                bytesRead = 0;
+                while (!sdFile.atEnd() && bytesRead < sampleSize)
+              {
+                qint64 n = sdFile.read(buffer.data(), chunkSize);
+               if (n <= 0) break;
+                 hash.addData(buffer.constData(), n);
+                  bytesRead += n;
+              }
+            }
+
 
                 localHash = QString::fromLatin1(hash.result().toHex());
                 sdFile.close();
@@ -1125,18 +1134,45 @@ qDebug().noquote() << "📁 Using update_tmp path (Windows/Linux):" << tmpDir;
 // 📦 Étapes spécifiques macOS : gestion du .tar et remplacement .app
 // --------------------------------------------------------------
 QMetaObject::invokeMethod(QApplication::instance(), [=]() {
-    QDir tmp(tmpDir);
-    QStringList tars = tmp.entryList(QStringList() << QStringLiteral("*.tar"), QDir::Files);
-    if (!tars.isEmpty()) {
-        QString tarPath = tmp.filePath(tars.first());
-        qDebug().noquote() << "📦 Found TAR:" << tarPath;
-        QProcess tarProc;
-        tarProc.setWorkingDirectory(tmpDir);
-        tarProc.start(QStringLiteral("/usr/bin/tar"), {QStringLiteral("-xf"), tarPath});
-        tarProc.waitForFinished(60000);
-        QFile::remove(tarPath);
-        qDebug().noquote() << "✅ TAR extracted and removed.";
-    }
+QDir tmp(tmpDir);
+
+// ✅ Toutes les variantes TAR possibles sur macOS
+QStringList tarFilters{
+    QStringLiteral("*.tar"),
+    QStringLiteral("*.tar.gz"),
+    QStringLiteral("*.tgz"),
+    QStringLiteral("*.tar.xz"),
+    QStringLiteral("*.txz"),
+    QStringLiteral("*.tar.bz2")
+};
+
+QStringList archives = tmp.entryList(tarFilters, QDir::Files);
+
+if (archives.isEmpty()) {
+    qWarning().noquote()
+        << "❌ Aucun archive TAR trouvée (tar / tar.xz / tar.gz) dans"
+        << tmpDir;
+    qWarning().noquote() << "📂 Fichiers présents :" << tmp.entryList(QDir::Files);
+    return;
+}
+
+QString tarPath = tmp.filePath(archives.first());
+qDebug().noquote() << "📦 Found TAR archive:" << tarPath;
+
+QProcess tarProc;
+tarProc.setWorkingDirectory(tmpDir);
+
+// bsdtar macOS détecte automatiquement xz / gzip / bz2
+tarProc.start(QStringLiteral("/usr/bin/tar"),
+              QStringList() << QStringLiteral("-xf") << tarPath);
+
+if (!tarProc.waitForFinished(120000)) {
+    qCritical().noquote() << "❌ TAR extraction failed";
+    return;
+}
+
+QFile::remove(tarPath);
+qDebug().noquote() << "✅ Archive extracted and removed.";
 
     QString newAppPath;
     QStringList apps;
