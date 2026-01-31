@@ -1649,7 +1649,7 @@ void NetPlayClient::ThreadFunc()
     if (qos_session.Successful())
     {
       m_dialog->AppendChat(
-          Common::GetStringT("Quality of Service (QoS) was successfully enabled.\nBuffer should be set to your ping divided by 16, at a minimum of 2."));
+          Common::GetStringT("Quality of Service (QoS) was successfully enabled.\nBuffer should be set to your ping divided by 16, at a minimum of 3."));
     }
     else
     {
