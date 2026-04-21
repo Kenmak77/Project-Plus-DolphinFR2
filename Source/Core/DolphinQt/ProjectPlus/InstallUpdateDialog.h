@@ -58,7 +58,9 @@ private:
     QString filename;
     QString downloadUrl;
     QString m_sdUrl;
-
+    
+    int m_ariaRetryCount = 0;
+    
     QThread* m_hashThread = nullptr;
 
     QLabel* label;

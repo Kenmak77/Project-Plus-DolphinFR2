@@ -611,8 +611,13 @@ if (clamped / 5 != lastMain / 5) {
 
             QStringList args = {
                 QStringLiteral("--allow-overwrite=true"),
+                QStringLiteral("--auto-file-renaming=false"), // Évite les conflits de noms
+                QStringLiteral("--file-allocation=none"),     // <--- IMPORTANT : Évite le blocage au début/fin
                 QStringLiteral("-x"), QStringLiteral("8"),
                 QStringLiteral("-s"), QStringLiteral("8"),
+                QStringLiteral("--max-connection-per-server=8"),
+                QStringLiteral("--min-split-size=1M"),
+                QStringLiteral("--stream-piece-selector=out-order"), // Aide sur les connexions instables
                 QStringLiteral("--console-log-level=notice"),
                 QStringLiteral("--summary-interval=1"),
                 QStringLiteral("--enable-color=false"),
@@ -662,12 +667,12 @@ if (clamped / 5 != lastMain / 5) {
             return;
         }
 
-        static int ariaRetryCount = 0;
-if (ariaRetryCount < 1) {
-    ariaRetryCount++;
-    qWarning().noquote() << "⚠️ aria2c failed — retrying once...";
+// On utilise la variable membre m_ariaRetryCount définie dans le .h
+if (m_ariaRetryCount < 1) {
+    m_ariaRetryCount++;
+    qWarning().noquote() << "⚠️ aria2c failed (not found) — retrying once...";
     QTimer::singleShot(1000, this, [=]() {
-        startSDDownload(); // retente
+        startSDDownload(); 
     });
     return;
 }
@@ -707,18 +712,19 @@ void InstallUpdateDialog::startRcloneFallback(const QString& sdUrl,
 
     // ⚙️ Commande rclone optimisée
     QStringList rargs = {
-    QStringLiteral("copyto"),
-    QStringLiteral(":http:%1").arg(fileName),
-    QDir::toNativeSeparators(sdPath),
-    QStringLiteral("--http-url"), baseUrl,
-    QStringLiteral("--multi-thread-streams=4"),
-    QStringLiteral("--multi-thread-cutoff=16M"),
-    QStringLiteral("--buffer-size=128M"),
-    QStringLiteral("--transfers=2"),
-    QStringLiteral("--low-level-retries=5"),
-    QStringLiteral("--checkers=4"),
-    QStringLiteral("--retries=3"),
-    QStringLiteral("--progress")
+        QStringLiteral("copyto"),
+        QStringLiteral(":http:%1").arg(fileName),
+        QDir::toNativeSeparators(sdPath),
+        QStringLiteral("--http-url"), baseUrl,
+        QStringLiteral("--multi-thread-streams=4"),
+        QStringLiteral("--multi-thread-cutoff=16M"),
+        QStringLiteral("--buffer-size=1M"),          // 🚀 Petit buffer = écriture fluide sur disque
+        QStringLiteral("--stats=1s"),                // 🚀 Force la mise à jour des logs chaque seconde
+        QStringLiteral("--stats-one-line"),          // Simplifie le parsing
+        QStringLiteral("--low-level-retries=10"),
+        QStringLiteral("--contimeout=30s"),          // Timeout de connexion
+        QStringLiteral("--timeout=30s"),             // Timeout de transfert
+        QStringLiteral("--progress")
 };
 
     qDebug().noquote() << "🚀 Launching rclone:" << rargs.join(QLatin1Char(' '));
@@ -771,18 +777,10 @@ void InstallUpdateDialog::startRcloneFallback(const QString& sdUrl,
         }
         else
         {
-            qWarning().noquote() << "❌ rclone failed → trying HTTPS fallback...";
-            *sdFinished = false;
-            *sdSuccess = false;
-
-            // 🔁 Fallback HTTPS
+            qWarning().noquote() << "❌ rclone failed or incomplete → starting HTTPS fallback...";
+            // ⚠️ ICI : On ne signale pas la fin, on passe la main au dernier fallback
             startHttpFallback(sdUrl, sdPath, sdFinished, sdSuccess, uiProgress, uiDone);
         }
-
-        // ✅ Signale la fin (même si fallback)
-        QMetaObject::invokeMethod(this, [=]() {
-            this->checkIfAllDownloadsFinished(*sdFinished, *sdSuccess);
-        }, Qt::QueuedConnection);
 
         rclone->deleteLater();
     });
@@ -808,33 +806,35 @@ void InstallUpdateDialog::startHttpFallback(const QString& sdUrl,
 
     // ✅ Script PowerShell avec vitesse fluide et unité adaptée (B/s, KB/s, MB/s)
     const QString script = QString::fromUtf8(
-         "$url='%1';$out='%2';"
-    "$req=[System.Net.HttpWebRequest]::Create($url);"
-    "$req.Proxy=[System.Net.GlobalProxySelection]::GetEmptyWebProxy();"
-    "$req.UserAgent='ProjectPlus-Updater';"
-    "$res=$req.GetResponse();"
-    "$total=$res.ContentLength;"
-    "$stream=$res.GetResponseStream();"
-    "$fs=[System.IO.FileStream]::new($out,[System.IO.FileMode]::Create);"
-    "$buffer=New-Object byte[] (4MB);"  
-    "$received=0;$prev=0;"
-    "$sw=[System.Diagnostics.Stopwatch]::StartNew();"
-    "while(($read=$stream.Read($buffer,0,$buffer.Length)) -gt 0){"
-    "  $fs.Write($buffer,0,$read);"
-    "  $received+=$read;"
-    "  if($sw.ElapsedMilliseconds -gt 500){"
-    "    $percent=[math]::Round(($received/$total)*100,1);"
-    "    $speedBytes=($received-$prev)/$sw.Elapsed.TotalSeconds;"
-    "    if($speedBytes -gt 1048576){$speedStr=[Math]::Round($speedBytes/1MB,2).ToString()+' MB/s'}"
-    "    elseif($speedBytes -gt 1024){$speedStr=[Math]::Round($speedBytes/1KB,1).ToString()+' KB/s'}"
-    "    else{$speedStr=$speedBytes.ToString()+' B/s'}"
-    "    Write-Host (\"$percent|$speedStr\");"
-    "    $prev=$received;$sw.Restart()"
-    "  }"
-    "}"
-    "$fs.Close();$stream.Close();$res.Close();"
-    "Write-Host 'DONE';"
-).arg(sdUrl, sdPath);
+        "[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12;"
+        "$url='%1';$out='%2';"
+        "$req=[System.Net.HttpWebRequest]::Create($url);"
+        "$req.Proxy=[System.Net.GlobalProxySelection]::GetEmptyWebProxy();"
+        "$req.UserAgent='ProjectPlus-Updater';"
+        "$req.Timeout=60000;" 
+        "$res=$req.GetResponse();"
+        "$total=$res.ContentLength;"
+        "$stream=$res.GetResponseStream();"
+        "$fs=[System.IO.FileStream]::new($out,[System.IO.FileMode]::Create);"
+        "$buffer=New-Object byte[] (1MB);" 
+        "$received=0;$prev=0;"
+        "$sw=[System.Diagnostics.Stopwatch]::StartNew();"
+        "while(($read=$stream.Read($buffer,0,$buffer.Length)) -gt 0){"
+        "  $fs.Write($buffer,0,$read);"
+        "  $received+=$read;"
+        "  if($sw.ElapsedMilliseconds -gt 800){"
+        "    $percent=[math]::Round(($received/$total)*100,1);"
+        "    $speedBytes=($received-$prev)/$sw.Elapsed.TotalSeconds;"
+        "    if($speedBytes -gt 1048576){$speedStr=[Math]::Round($speedBytes/1MB,2).ToString()+' MB/s'}"
+        "    elseif($speedBytes -gt 1024){$speedStr=[Math]::Round($speedBytes/1KB,1).ToString()+' KB/s'}"
+        "    else{$speedStr=$speedBytes.ToString()+' B/s'}"
+        "    Write-Host (\"$percent|$speedStr\");"
+        "    $prev=$received;$sw.Restart()"
+        "  }"
+        "}"
+        "$fs.Close();$stream.Close();$res.Close();"
+        "Write-Host 'DONE';"
+    ).arg(sdUrl, sdPath);
 
     connect(ps, &QProcess::readyReadStandardOutput, this, [this, ps, uiProgress]() {
         const QString out = QString::fromUtf8(ps->readAllStandardOutput()).trimmed();
