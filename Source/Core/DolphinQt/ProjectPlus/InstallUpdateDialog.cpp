@@ -611,14 +611,14 @@ if (clamped / 5 != lastMain / 5) {
 
             QStringList args = {
                 QStringLiteral("--allow-overwrite=true"),
+                QStringLiteral("--no-conf=true"),             // ✅ Ignore config externe
+                QStringLiteral("--file-allocation=none"),     // ✅ Crucial pour éviter le freeze à 96%
+                QStringLiteral("--stream-piece-selector=random"), // Fluidifie la fin
                 QStringLiteral("-x"), QStringLiteral("8"),
                 QStringLiteral("-s"), QStringLiteral("8"),
-                QStringLiteral("--console-log-level=notice"),
                 QStringLiteral("--summary-interval=1"),
-                QStringLiteral("--enable-color=false"),
-                QStringLiteral("--show-console-readout=false"),
-                QStringLiteral("-d"), QFileInfo(sdPath).path(),
-                QStringLiteral("-o"), QFileInfo(sdPath).fileName(),
+                QStringLiteral("-d"), fi.path(),
+                QStringLiteral("-o"), fi.fileName(),
                 sdUrl
             };
 
@@ -707,19 +707,19 @@ void InstallUpdateDialog::startRcloneFallback(const QString& sdUrl,
 
     // ⚙️ Commande rclone optimisée
     QStringList rargs = {
-    QStringLiteral("copyto"),
-    QStringLiteral(":http:%1").arg(fileName),
-    QDir::toNativeSeparators(sdPath),
-    QStringLiteral("--http-url"), baseUrl,
-    QStringLiteral("--multi-thread-streams=4"),
-    QStringLiteral("--multi-thread-cutoff=16M"),
-    QStringLiteral("--buffer-size=128M"),
-    QStringLiteral("--transfers=2"),
-    QStringLiteral("--low-level-retries=5"),
-    QStringLiteral("--checkers=4"),
-    QStringLiteral("--retries=3"),
-    QStringLiteral("--progress")
-};
+        QStringLiteral("copyto"),
+        QStringLiteral(":http:%1").arg(fileName),
+        QDir::toNativeSeparators(sdPath),
+        QStringLiteral("--http-url"), baseUrl,
+        QStringLiteral("--multi-thread-streams=4"),
+        QStringLiteral("--multi-thread-cutoff=16M"),
+        QStringLiteral("--buffer-size=16M"),        // ✅ Réduit pour une écriture disque fluide
+        QStringLiteral("--transfers=1"),            // ✅ 1 seul transfert à la fois pour la stabilité
+        QStringLiteral("--checkers=1"),             // ✅ Évite de saturer les accès IO
+        QStringLiteral("--low-level-retries=10"),
+        QStringLiteral("--stats=1s"),               // ✅ Force une mise à jour toutes les secondes
+        QStringLiteral("--progress")
+    };
 
     qDebug().noquote() << "🚀 Launching rclone:" << rargs.join(QLatin1Char(' '));
 
@@ -757,35 +757,26 @@ void InstallUpdateDialog::startRcloneFallback(const QString& sdUrl,
         }
     });
 
-    connect(rclone, qOverload<int, QProcess::ExitStatus>(&QProcess::finished),
-            this, [=](int code, QProcess::ExitStatus) {
-        QFileInfo fi(sdPath);
-        const bool ok = (code == 0 && fi.exists() && fi.size() > (10 * 1024 * 1024));
+    connect(rclone, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [=](int code, QProcess::ExitStatus) {
+    QFileInfo fi(sdPath);
+    // Vérifie si le fichier fait au moins 10Mo pour valider le succès
+    const bool ok = (code == 0 && fi.exists() && fi.size() > (10 * 1024 * 1024));
 
-        if (ok)
-        {
-            qDebug().noquote() << "✅ SD download succeeded with rclone";
-            *sdFinished = true;
-            *sdSuccess = true;
-            uiDone(true, QStringLiteral("🎉 SD download complete (rclone)!"));
-        }
-        else
-        {
-            qWarning().noquote() << "❌ rclone failed → trying HTTPS fallback...";
-            *sdFinished = false;
-            *sdSuccess = false;
-
-            // 🔁 Fallback HTTPS
-            startHttpFallback(sdUrl, sdPath, sdFinished, sdSuccess, uiProgress, uiDone);
-        }
-
-        // ✅ Signale la fin (même si fallback)
+    if (ok) {
+        *sdFinished = true; *sdSuccess = true;
+        uiDone(true, QStringLiteral("SD download complete!"));
+        
+        // ✅ ON NE VALIDE QUE SI OK
         QMetaObject::invokeMethod(this, [=]() {
             this->checkIfAllDownloadsFinished(*sdFinished, *sdSuccess);
         }, Qt::QueuedConnection);
-
-        rclone->deleteLater();
-    });
+    } 
+    else {
+        // 🔁 SINON, ON LANCE LE SECOURS SANS VALIDER
+        startHttpFallback(sdUrl, sdPath, sdFinished, sdSuccess, uiProgress, uiDone);
+    }
+    rclone->deleteLater();
+});
 
     rclone->start(QStringLiteral("rclone"), rargs);
 }
@@ -1312,7 +1303,7 @@ QTimer::singleShot(500, [] { ::_exit(0); });
         out << "cd /d \"%DST%\"\n";
 
         out << "echo Moving new files to destination...\n";
-        out << "robocopy \"%SRC%\" \"%DST%\" /E /MOVE /R:2 /W:1 >nul\n";
+        out << "robocopy \"%SRC%\" \"%DST%\" /E /MOVE /XF sd.raw /R:2 /W:1 >nul\n";
         out << "set RC=%ERRORLEVEL%\n";
         out << "if %RC% GEQ 8 (\n";
         out << "  echo ❌ Robocopy failed with code %RC%.\n";
