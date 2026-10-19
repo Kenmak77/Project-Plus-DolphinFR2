@@ -8,7 +8,7 @@ on: [push, pull_request]
 jobs: 
   build_windows_x86_64:
     name: Windows Build
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
     - name: Checkout Repository
       uses: actions/checkout@v4
@@ -21,7 +21,7 @@ jobs:
     - name: Setup MSBuild
       uses: microsoft/setup-msbuild@v2
       with:
-        vs-version: '[17.0,18.0)'
+        vs-version: '[17.0,19.0)'
     - name: Check Visual Studio and MSVC
       shell: cmd
       run: |
