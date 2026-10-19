@@ -33,7 +33,8 @@ jobs:
         
   build_macos:
     name: macOS Build
-    runs-on: macos-14
+    runs-on: macos-15
+    timeout-minutes: 90
     env:
       CCACHE_BASEDIR: ${{ github.workspace }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -69,10 +70,10 @@ jobs:
           key: macOS deps ${{ hashFiles('.github/workflows/scripts/macos/build-dependencies.sh') }}
 
       - name: Install Qt6 dependencies
+        env:
+          HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
-         brew update
-         brew install qt@6
-         brew link qt@6 --force
+          brew install qt
 
       - name: Build Dependencies
         if: steps.cache-deps.outputs.cache-hit != 'true'
