@@ -19,9 +19,16 @@ jobs:
     - name: Setup Submodules
       run: git config --global --add safe.directory . && git submodule update --init --recursive
     - name: Setup MSBuild
-      uses: microsoft/setup-msbuild@v1.0.2
+      uses: microsoft/setup-msbuild@v2
       with:
-        vs-version: '16.6.2'
+        vs-version: '[17.0,18.0)'
+    - name: Check Visual Studio and MSVC
+      shell: cmd
+      run: |
+        where msbuild
+        msbuild -version
+        where cl
+        cl
     - name: Build
       run: msbuild "Source\dolphin-emu.sln" /verbosity:minimal /property:Configuration=Release /property:Platform=x64
     - name: Upload Build Artifact
