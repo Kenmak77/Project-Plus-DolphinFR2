@@ -45,6 +45,8 @@ cd ..
 echo "Installing Qt Base..."
 tar xf "qtbase-everywhere$QT_SUFFIX-src-$QT.tar.xz"
 cd "qtbase-everywhere-src-$QT"
+sed -i '' 's|#[[:space:]]*include <fp.h>|#  include <math.h>|' src/3rdparty/libpng/pngpriv.h
+grep -n "fp.h\|math.h" src/3rdparty/libpng/pngpriv.h || true
 cmake -B build -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_PREFIX_PATH="$INSTALLDIR" -DCMAKE_INSTALL_PREFIX="$INSTALLDIR" -DCMAKE_BUILD_TYPE=Release -DFEATURE_optimize_size=ON -DFEATURE_dbus=OFF -DFEATURE_framework=OFF -DFEATURE_icu=OFF -DFEATURE_opengl=OFF -DFEATURE_printsupport=OFF -DFEATURE_sql=OFF -DFEATURE_gssapi=OFF -DFEATURE_system_png=OFF -DFEATURE_system_jpeg=OFF -DCMAKE_MESSAGE_LOG_LEVEL=STATUS
 make -C build "-j$NPROCS"
 make -C build install
